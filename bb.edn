@@ -58,6 +58,34 @@
                               :show false
                               :format [:html]})")}
 
+  preview
+  {:doc  "Serve the docs/ output directory on http://localhost:8765.
+          Pair with `bb render <file>` to produce the HTML first.
+          Runs in the foreground; Ctrl-C to stop. For AI/MCP-driven
+          inner loops where `file://` URLs are blocked, this
+          provides an HTTP surface that Playwright / Chrome DevTools
+          MCPs can navigate to."
+   :task (shell "python3" "-m" "http.server" "8765"
+                "--directory" "docs")}
+
+  preview:bg
+  {:doc  "Same as `preview` but starts the server in the background
+          (using nohup). Writes the PID to .preview.pid so a later
+          `bb preview:stop` can shut it down. Useful in scripted
+          render → navigate → screenshot loops."
+   :task (do
+           (shell {:out :inherit}
+                  "bash" "-c"
+                  "nohup python3 -m http.server 8765 --directory docs >/dev/null 2>&1 & echo $! > .preview.pid")
+           (println "preview server running on http://localhost:8765")
+           (println "stop with: bb preview:stop"))}
+
+  preview:stop
+  {:doc  "Stop the background preview server started by `preview:bg`."
+   :task (shell {:out :inherit}
+                "bash" "-c"
+                "if [ -f .preview.pid ]; then kill $(cat .preview.pid) 2>/dev/null; rm -f .preview.pid; echo 'preview server stopped'; else echo 'no .preview.pid found'; fi")}
+
   ;; ── REPL / quick smoke ──────────────────────────────────
 
   smoke

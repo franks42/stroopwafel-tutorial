@@ -12,3 +12,18 @@ pom.xml.asc
 .lein-failures
 .nrepl-port
 .cpcache/
+
+# Clay render output is rebuildable; do not commit
+/docs/
+
+# Preview server state
+.preview.pid
+
+# Playwright MCP working directory
+.playwright-mcp/
+
+# AI-generated screenshots from browser_take_screenshot
+*.png
+*.jpeg
+!notebooks/*.png    # allow hand-picked images if any
+!notebooks/*.jpeg

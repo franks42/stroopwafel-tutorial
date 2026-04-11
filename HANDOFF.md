@@ -235,9 +235,12 @@ Task shortcuts available via `bb <task>`:
 | Task | What it does |
 |---|---|
 | `bb smoke` | 3-library sanity check: load stroopwafel/signet/spki, run one evaluate, sign one envelope, run one SPKI decide. Fast, no JVM spin-up. First thing to run when starting work. |
-| `bb render <f>` | Render one notebook file to HTML via Clay. Shells out to `clojure -M`. |
-| `bb serve` | Clay live-reload dev server — edit a notebook, save, browser auto-refreshes. The primary inner loop for tutorial writing. |
+| `bb render <f>` | Render one notebook file to HTML via Clay. Shells out to `clojure -M`. Writes to `docs/`. |
+| `bb serve` | Clay live-reload dev server — edit a notebook, save, browser auto-refreshes. The primary inner loop for HUMAN authors. |
 | `bb render-all` | Render every `notebooks/*.clj` to HTML. |
+| `bb preview` | Serve `docs/` on http://localhost:8765 via `python3 -m http.server` (foreground). For AI/MCP inner loops where `file://` URLs are blocked. |
+| `bb preview:bg` | Same, but in the background. Writes `.preview.pid`. |
+| `bb preview:stop` | Stop the background preview server. |
 | `bb lint` | clj-kondo over `notebooks` + `src`. |
 | `bb fmt` / `bb fmt:fix` | cljfmt check / auto-fix. |
 
@@ -269,6 +272,87 @@ works. If publication to Clojars is still pending when readers
 arrive, the README can add a one-paragraph "for now you need to
 install these locally" workaround pointing at each library's
 `build.clj`, but the design assumes a clean Clojars experience.
+
+---
+
+## 4.1 Browser-automation inner loop (for Claude instances)
+
+If you're an AI instance (Claude or otherwise) working on this
+tutorial, you need a way to actually SEE the rendered HTML — not
+just read the `.clj` source or the raw HTML text. Visual layout,
+heading hierarchy, code-block rendering, and result-block
+placement are part of what the tutorial is, and you can't judge
+them by reading the source.
+
+**The working recipe, verified in the session that wrote this:**
+
+1. **Render to HTML** — `bb render notebooks/<your-file>.clj`
+   writes output to `docs/<file-basename>.html`.
+
+2. **Start the preview server** — `bb preview:bg` starts a local
+   HTTP server on port 8765 serving the `docs/` directory. The
+   `file://` protocol is blocked by the Playwright MCP for
+   security reasons, so an HTTP surface is required.
+
+3. **Navigate via Playwright MCP** — load the Playwright MCP
+   tools if they're not already available
+   (`ToolSearch` with query
+   `"select:mcp__playwright__browser_navigate,mcp__playwright__browser_snapshot,mcp__playwright__browser_take_screenshot,mcp__playwright__browser_close"`),
+   then call `browser_navigate` with
+   `http://localhost:8765/<file-basename>.html`.
+
+4. **Get an accessibility snapshot** — call `browser_snapshot`.
+   This returns a structured YAML tree of the rendered page
+   (headings, paragraphs, code blocks, etc.) which is more useful
+   than a pixel screenshot for most tutorial-editing purposes —
+   you can read it, grep it, and reason about it.
+
+5. **Optional pixel screenshot** — call `browser_take_screenshot`
+   with `fullPage: true` for a visual check when layout matters
+   (e.g., "does the code block CSS look right?"). The screenshot
+   is saved to a file you can view.
+
+6. **Close the browser** — `browser_close` when done.
+
+7. **Stop the preview server** — `bb preview:stop`.
+
+**Alternative: Chrome DevTools MCP** — if available, the
+`mcp__chrome-devtools__*` family works similarly and gives you
+real Chrome rendering (better visual fidelity, access to devtools
+panels). Playwright is simpler for the "does the render look
+right?" inner loop; Chrome DevTools is better when you need to
+inspect network requests, console errors, or computed CSS.
+
+**What the verification session confirmed:**
+
+- `bb render notebooks/01_first_decision.clj` produces a
+  717-line HTML file at `docs/first_decision.html`.
+- `bb preview:bg` + `curl -s -o /dev/null -w "%{http_code}"
+  http://localhost:8765/first_decision.html` returns `200`.
+- Playwright `browser_navigate` + `browser_snapshot` returns a
+  structured YAML tree showing all Clay rendering elements:
+  headings ("Chapter 1 — Your first authorization decision",
+  "The three ingredients", "Facts", "A decision", "What's next"),
+  prose paragraphs, code blocks with the actual `(sw/evaluate
+  ...)` forms, and result blocks displaying `{:valid? true}` and
+  `{:valid? false}` from the real library calls executed at
+  render time.
+- Full-page screenshot renders correctly at page scale.
+
+**Workflow tip for iterating on a chapter:**
+
+```
+bb render notebooks/02_multiple_facts.clj    # rebuild HTML
+# navigate Playwright → snapshot → read the structure
+# if something looks wrong, edit the .clj source
+bb render notebooks/02_multiple_facts.clj    # rebuild
+# navigate Playwright → snapshot → verify fix
+```
+
+The `bb serve` task (Clay's live-reload server) is the
+equivalent for human authors — edit, save, browser auto-refreshes.
+Don't use `bb serve` for Claude-driven work; it's harder to
+script than the explicit render → navigate → snapshot loop.
 
 ---
 
@@ -497,11 +581,15 @@ hour:
    is the same thing the reader will do in Chapter 1, and you
    need to feel the shape of that experience. (~5 min)
 
-7. **Render the stub to HTML.** Run `bb render
-   notebooks/01_first_decision.clj`. Open the resulting HTML in
-   a browser. Confirm Clay renders your environment correctly —
-   prose as markdown, code as Clojure, output as result blocks.
-   This is the reader's experience. (~5 min)
+7. **Render the stub and look at it.** Run `bb render
+   notebooks/01_first_decision.clj` (writes to
+   `docs/first_decision.html`). If you're a human author, open
+   that file in a browser. If you're a Claude instance, see §4.1
+   for the full render → preview:bg → Playwright navigate →
+   snapshot loop. Either way, confirm Clay renders your
+   environment correctly — prose as markdown, code as Clojure,
+   result blocks showing evaluated output. This is the reader's
+   experience. (~5 min)
 
 8. **Throw away the stub and write the real Chapter 1.** One
    page. Show it to Frank. Iterate. Don't start Chapter 2 until

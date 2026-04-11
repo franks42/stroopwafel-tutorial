@@ -1,0 +1,79 @@
+{:paths ["src" "notebooks"]
+
+ ;; bb.edn is for task orchestration. The actual notebook content
+ ;; runs under JVM Clojure via Clay — see deps.edn for library
+ ;; versions. This file just provides `bb render`, `bb serve`, etc.
+ ;; as short aliases for the underlying `clojure -M ...` commands.
+
+ :tasks
+ {;; ── Quality ─────────────────────────────────────────────
+
+  lint {:doc  "Lint notebooks + src with clj-kondo"
+        :task (shell "clj-kondo" "--lint" "notebooks" "src")}
+
+  fmt  {:doc  "Check formatting with cljfmt"
+        :task (shell "cljfmt" "check" "notebooks" "src")}
+
+  fmt:fix {:doc  "Auto-fix formatting"
+           :task (shell "cljfmt" "fix" "notebooks" "src")}
+
+  ;; ── Notebook rendering (Clay runs under JVM Clojure) ────
+
+  render
+  {:doc  "Render a notebook to HTML.
+          Usage: bb render notebooks/01_first_decision.clj"
+   :task (let [f (or (first *command-line-args*)
+                     (do (println "Usage: bb render <notebook-file>")
+                         (System/exit 1)))]
+           (shell "clojure" "-M" "-e"
+                  (format "(require '[scicloj.clay.v2.api :as clay])
+                           (clay/make! {:source-path \"%s\"
+                                        :show false
+                                        :format [:html]})" f)))}
+
+  serve
+  {:doc  "Start Clay's live-rendering server. Edit any notebook file
+          and Clay re-renders on save. Default browser opens to the
+          preview."
+   :task (shell "clojure" "-M" "-e"
+                "(require '[scicloj.clay.v2.api :as clay])
+                 (clay/make! {:show true :live-reload true})
+                 @(promise)")}
+
+  render-all
+  {:doc  "Render every notebook in notebooks/ to HTML."
+   :task (shell "clojure" "-M" "-e"
+                "(require '[scicloj.clay.v2.api :as clay])
+                 (clay/make! {:source-path
+                              (->> (file-seq (clojure.java.io/file \"notebooks\"))
+                                   (filter #(.endsWith (.getName %) \".clj\"))
+                                   (map #(.getPath %))
+                                   vec)
+                              :show false
+                              :format [:html]})")}
+
+  ;; ── REPL / quick smoke ──────────────────────────────────
+
+  smoke
+  {:doc  "Quick sanity check: load the three libraries and run
+          one evaluate/sign/decide round-trip. If this passes,
+          the deps and ~/.m2 install are wired correctly."
+   :task (shell "clojure" "-M" "-e" "
+(require '[stroopwafel.core :as sw]
+         '[signet.key :as key]
+         '[stroopwafel.pdp.spki.core :as spki]
+         '[stroopwafel.pdp.spki.assertion :as a])
+(let [r (sw/evaluate {:blocks [{:facts [[:hello :world]]}]}
+                     :authorizer {:policies [{:kind :allow
+                                              :query [[:hello :world]]}]})]
+  (println :stroopwafel-ok? (:valid? r)))
+(println :signet-kid-ok? (string? (key/kid (key/signing-keypair))))
+(let [root  (key/signing-keypair)
+      block (a/sign-block root {:assertions [(a/assertion :capability [\"alice\" :read \"/data\"])]})
+      r     (-> (spki/context)
+                (spki/add-trust-roots (key/kid root))
+                (spki/add-assertions block)
+                (spki/decide :policies
+                             [{:kind :allow
+                               :query [['?s '?t '?nb '?na :capability '?id \"alice\" :read \"/data\"]]}]))]
+  (println :spki-decide-ok? (:allowed? r)))")}}}

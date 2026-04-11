@@ -168,42 +168,107 @@ without debate. Don't spend more than a day evaluating.
 
 ---
 
-## 4. Deps setup (already done, just use it)
+## 4. Scaffolding: what's already in place
 
-The three libraries are installed to `~/.m2/repository` on this
-machine via the "Path D" workflow. **The tutorial's `deps.edn`
-should use `:mvn/version` coordinates** — the jars are there and
-resolution works.
+The tutorial repo is **already scaffolded and verified working** as
+of the session that wrote this file. You don't need to set up the
+environment — just read HANDOFF.md, run `bb smoke` to confirm the
+libraries load, and start writing chapter content.
 
-```clojure
-;; stroopwafel-tutorial/deps.edn
-{:paths ["notebooks" "src"]
- :deps  {org.clojure/clojure {:mvn/version "1.12.4"}
+### Files in the repo
 
-         ;; The three auth-stack libraries. These are installed
-         ;; locally to ~/.m2 on this machine; not yet on Clojars.
-         ;; Future readers will need either the installed jars or
-         ;; Clojars publication (planned).
-         com.github.franks42/stroopwafel     {:mvn/version "0.11.0"}
-         com.github.franks42/signet          {:mvn/version "0.3.1"}
-         com.github.franks42/stroopwafel-pdp {:mvn/version "0.2.0"}
-
-         ;; Notebook renderer
-         org.scicloj/clay {:mvn/version "..."}}
-
- :aliases
- {:dev {:extra-paths ["dev"]}}}
+```
+stroopwafel-tutorial/
+├── HANDOFF.md                    ← this file
+├── README.md                     ← stub pointing readers here
+├── LICENSE
+├── deps.edn                      ← JVM Clojure + Clay + three libs
+├── bb.edn                        ← bb task shortcuts
+├── notebooks/
+│   └── 01_first_decision.clj     ← Chapter 1 stub (replace with real content)
+└── src/                          ← helper code lives here if needed
 ```
 
-(You'll need to look up the current Clay version — it's on Clojars
-as `org.scicloj/clay` and moves fast.)
+### deps.edn (JVM Clojure side — Clay rendering)
 
-**Important non-goal:** the tutorial should not require readers to
-clone signet, stroopwafel, or stroopwafel-pdp separately. Assume
-`:mvn/version` works. If publication to Clojars is still pending
-when readers arrive, the README can have a one-paragraph "for now
-you need to install these locally" workaround, but the design
-assumes a clean Clojars experience.
+```clojure
+{:paths ["src" "notebooks"]
+ :deps  {org.clojure/clojure                  {:mvn/version "1.12.4"}
+         ;; Three-library auth stack — installed to ~/.m2 via the
+         ;; Path D workflow; :mvn/version coords work today and
+         ;; will work transparently when these are on Clojars.
+         com.github.franks42/stroopwafel      {:mvn/version "0.11.0"}
+         com.github.franks42/signet           {:mvn/version "0.3.1"}
+         com.github.franks42/stroopwafel-pdp  {:mvn/version "0.2.0"}
+         ;; Notebook renderer (JVM-only, see §3)
+         org.scicloj/clay                     {:mvn/version "2.0.15"}}
+
+ :aliases
+ {:test {:extra-paths ["test"]
+         :extra-deps {io.github.cognitect-labs/test-runner {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
+         :main-opts ["-m" "cognitect.test-runner"]
+         :exec-fn cognitect.test-runner.api/test}
+
+  ;; Escape hatch: override the three libs with :local/root source
+  ;; trees for cross-repo debugging. Run: clojure -M:dev:repl
+  :dev  {:override-deps
+         {com.github.franks42/stroopwafel     {:local/root "../stroopwafel"}
+          com.github.franks42/signet          {:local/root "../signet"}
+          com.github.franks42/stroopwafel-pdp {:local/root "../stroopwafel-pdp"}}}}}
+```
+
+### bb.edn (babashka side — task orchestration)
+
+```clojure
+{:paths ["src" "notebooks"]
+ :deps  {com.github.franks42/stroopwafel     {:mvn/version "0.11.0"}
+         com.github.franks42/signet          {:mvn/version "0.3.1"}
+         com.github.franks42/stroopwafel-pdp {:mvn/version "0.2.0"}}
+ ;; Note: Clay is NOT in bb's :deps — it doesn't load under bb
+ ;; (see §3). bb tasks that touch Clay shell out to `clojure -M`.
+
+ :tasks {...}}
+```
+
+Task shortcuts available via `bb <task>`:
+
+| Task | What it does |
+|---|---|
+| `bb smoke` | 3-library sanity check: load stroopwafel/signet/spki, run one evaluate, sign one envelope, run one SPKI decide. Fast, no JVM spin-up. First thing to run when starting work. |
+| `bb render <f>` | Render one notebook file to HTML via Clay. Shells out to `clojure -M`. |
+| `bb serve` | Clay live-reload dev server — edit a notebook, save, browser auto-refreshes. The primary inner loop for tutorial writing. |
+| `bb render-all` | Render every `notebooks/*.clj` to HTML. |
+| `bb lint` | clj-kondo over `notebooks` + `src`. |
+| `bb fmt` / `bb fmt:fix` | cljfmt check / auto-fix. |
+
+### notebooks/01_first_decision.clj
+
+A **placeholder** Chapter 1 that demonstrates:
+- Clay's notebook conventions (prose as `;;` comments between code forms)
+- Correct `ns` + `:require` for the tutorial
+- Minimum `stroopwafel.core/evaluate` example
+- Both positive and negative decisions
+
+**This file has a "note to the author" at the top explicitly
+asking you to rewrite it before shipping.** It's a live scaffold,
+not finished content. Use it as a template for chapter structure,
+then replace it with your real Chapter 1.
+
+### Verified end-to-end (as of session that wrote this)
+
+- `clojure -Stree` resolves the full dep tree from `~/.m2` cleanly
+- Clay v2.0.15 downloaded + cached on first resolution
+- `bb smoke` → 3/3 green
+- Chapter 1 stub loads and runs in both bb and JVM Clojure
+
+### Important non-goal
+
+The tutorial should not require readers to clone signet,
+stroopwafel, or stroopwafel-pdp separately. Assume `:mvn/version`
+works. If publication to Clojars is still pending when readers
+arrive, the README can add a one-paragraph "for now you need to
+install these locally" workaround pointing at each library's
+`build.clj`, but the design assumes a clean Clojars experience.
 
 ---
 
@@ -402,21 +467,49 @@ Testing conventions across the repos:
 If you're picking this up cold, here's what I'd do in the first
 hour:
 
-1. Read this file once end to end. (~20 min)
-2. Read `../stroopwafel/src/stroopwafel/core.clj`. It's the whole
-   engine. ~150 lines. (~10 min)
-3. Read the three simplest tests in
-   `../stroopwafel/test/stroopwafel/core_test.clj` — pick the
-   shortest three, trace through what they do. (~10 min)
-4. Write a single-file 30-line Clojure script that creates facts,
-   defines a rule, evaluates a policy, and prints the decision.
-   Run it. Confirm you understand what happened. (~15 min)
-5. Stop and write ONE PAGE of Chapter 1 before looking at anything
-   else. Just one page. Show it to Frank. Iterate. (~5 min)
+1. **Read this file once end to end.** (~20 min)
 
-If you can't write Chapter 1 in one page after those four steps,
-you haven't understood the engine yet — go back to step 3 and read
-more tests. Don't start Chapter 2 until Chapter 1 feels right.
+2. **Run `bb smoke` from the repo root.** Confirms the three
+   libraries are resolvable via `~/.m2` and that
+   stroopwafel/signet/spki all evaluate correctly. If this fails,
+   stop and fix the environment before doing anything else —
+   every step below assumes a working stack. (~1 min)
+
+3. **Read the existing scaffold.** In order:
+   - `deps.edn` and `bb.edn` — confirm you understand what's wired
+     where. Should be obvious after §4 above.
+   - `notebooks/01_first_decision.clj` — the Chapter 1 stub.
+     Read it as a FORMAT EXAMPLE, not as content you'll keep. It
+     shows Clay's notebook conventions and confirms the libs
+     load. The actual content is placeholder. (~5 min)
+
+4. **Read the stroopwafel engine.** `../stroopwafel/src/stroopwafel/core.clj`
+   — the whole engine, ~150 lines, the comments are reasonable. (~10 min)
+
+5. **Read three short tests.** Pick the three shortest tests in
+   `../stroopwafel/test/stroopwafel/core_test.clj`, trace through
+   what they do. The goal: feel how `evaluate` pattern-matches
+   facts against queries. (~10 min)
+
+6. **Try one live example in bb.** Open `bb` (or use `bb -e`) and
+   type a tiny stroopwafel example — three facts, one policy,
+   one `evaluate` call. Confirm it prints `{:valid? true}`. This
+   is the same thing the reader will do in Chapter 1, and you
+   need to feel the shape of that experience. (~5 min)
+
+7. **Render the stub to HTML.** Run `bb render
+   notebooks/01_first_decision.clj`. Open the resulting HTML in
+   a browser. Confirm Clay renders your environment correctly —
+   prose as markdown, code as Clojure, output as result blocks.
+   This is the reader's experience. (~5 min)
+
+8. **Throw away the stub and write the real Chapter 1.** One
+   page. Show it to Frank. Iterate. Don't start Chapter 2 until
+   Chapter 1 feels right to both of you. (~5 min)
+
+If you can't write Chapter 1 in one page after steps 4–6, you
+haven't understood the engine yet — go back to step 5 and read
+more tests.
 
 ---
 

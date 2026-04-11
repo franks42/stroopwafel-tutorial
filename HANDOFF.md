@@ -106,10 +106,37 @@ step is doing and why.
 
 ---
 
-## 3. Recommended tool: Clay (scicloj)
+## 3. Recommended tool: Clay (scicloj) — JVM only for rendering
 
 After surveying Clerk, Clay, and Jupyter, Clay is the right choice
-for this tutorial. Short version:
+for this tutorial.
+
+**Important finding from the scaffolding session:** Clay **does not
+run under babashka** in v2.0.15. Every entry namespace (api, make,
+notebook, read) imports a JVM-only class transitively:
+
+- `nextjournal.beholder` (file watcher for live-reload) imports
+  `io.methvin.watcher.DirectoryChangeEvent` — not in bb's class list
+- `scicloj.kind-portal` (image support via item.clj) needs
+  `java.awt.image.BufferedImage` — bb doesn't ship AWT
+- `parcera.antlr.java` (source parser via read.clj) uses ANTLR
+  Java interop — also not in bb
+
+**What this means for the tutorial workflow:**
+
+- Notebook SOURCE is plain `.clj` files with Clay's comment/ns
+  conventions. These run fine under bb if you just want to try
+  snippets (`bb -e ...`) — the stroopwafel libraries themselves
+  are bb-compatible.
+- Notebook RENDERING requires JVM Clojure. The `bb.edn` in this
+  repo provides `bb render`, `bb serve`, `bb render-all` as bb
+  task shortcuts, but they all shell out to `clojure` internally
+  (see `bb.edn :tasks`).
+- Readers who want to run the tutorial need JVM Clojure + the
+  Clay dep. A bb-only reader cannot render the tutorial; they
+  can only run individual snippets from the source files.
+
+Short version:
 
 - **Clay** is a Clojure-native notebook renderer from the scicloj
   community. You write a `.clj` file with prose comments between

@@ -1,9 +1,15 @@
 {:paths ["src" "notebooks"]
 
- ;; bb.edn is for task orchestration. The actual notebook content
- ;; runs under JVM Clojure via Clay — see deps.edn for library
- ;; versions. This file just provides `bb render`, `bb serve`, etc.
- ;; as short aliases for the underlying `clojure -M ...` commands.
+ ;; bb can load the three stroopwafel libraries directly (they're
+ ;; bb-compatible). Clay itself is NOT bb-compatible in v2.0.15 —
+ ;; its transitive deps (nextjournal.beholder for live-reload,
+ ;; scicloj.kind-portal for image support, parcera.antlr for source
+ ;; parsing) pull in JVM-only classes that SCI can't resolve. So
+ ;; `bb render` and friends shell out to `clojure` for the JVM
+ ;; side; see deps.edn for Clay's version.
+ :deps {com.github.franks42/stroopwafel     {:mvn/version "0.11.0"}
+        com.github.franks42/signet          {:mvn/version "0.3.1"}
+        com.github.franks42/stroopwafel-pdp {:mvn/version "0.2.0"}}
 
  :tasks
  {;; ── Quality ─────────────────────────────────────────────

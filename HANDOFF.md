@@ -78,11 +78,16 @@ the next is mentioned.
 ┌──────────────────▼───────────────────────────────────────┐
 │  stroopwafel-pdp    — the PDP bridge                     │
 │  Two PDPs actually:                                      │
+│    stroopwafel.pdp.spki.*  — SPKI/SDSI assertion PDP ★   │
 │    stroopwafel.pdp.*       — Biscuit-shaped chain PDP    │
-│    stroopwafel.pdp.spki.*  — SPKI/SDSI assertion PDP     │
 │  Verifies signatures, extracts facts, calls evaluate     │
 └──────────────────────────────────────────────────────────┘
 ```
+
+★ **The tutorial teaches the SPKI/SDSI assertion PDP, NOT the
+Biscuit-style chain PDP.** They're both in the library and both
+work, but they're not equally good starting points. See §2.1 for
+the rationale.
 
 **Pedagogical implication:** the tutorial's first four or five
 chapters should use ONLY stroopwafel. Unsigned facts. Hand-written.
@@ -99,10 +104,83 @@ attributable" and demonstrating how `signet.sign/sign-edn` wraps
 a payload, how verification produces a `:signer` kid, and how you
 inject that kid into the stroopwafel fact store.
 
-Then — much later — stroopwafel-pdp enters as "here's what you do
-when you want the verification + fact-extraction + evaluation
+Then — much later — `stroopwafel.pdp.spki` enters as "here's what
+you do when you want the verification + fact-extraction + evaluation
 pipeline wrapped up nicely." By then the reader knows what each
 step is doing and why.
+
+## 2.1 Use the SPKI/SDSI model — NOT the chain model
+
+`stroopwafel-pdp` ships two PDPs side by side:
+
+- **`stroopwafel.pdp.spki.*`** — the **assertion** model. Signed
+  blocks carry independent statements (`:capability`,
+  `:name-binding`, `:delegation`, `:revocation`). Authorization is
+  a Datalog join across assertions from potentially different
+  issuers. No chains, no sealing, no bearer-token mechanics.
+- **`stroopwafel.pdp.*`** — the **chain** model (Biscuit-shaped).
+  Append-only blocks of facts signed into a cryptographic chain,
+  with attenuation via block extension and sealing.
+
+**The tutorial uses the SPKI/SDSI (assertion) model end-to-end.**
+The chain model may get a short appendix at the very end as a
+contrast ("here's another way the same library can be used"), but
+the main teaching flow — Chapter 5 signet, Chapter 6 first PDP
+call, Chapter 7 SDSI name resolution, Chapter 8 delegation, etc.
+— is entirely assertion-based.
+
+**Why this choice matters:**
+
+1. **The assertion model is conceptually simpler for beginners.**
+   Each assertion is an independent signed statement: "root says
+   alice is in ops-team." The reader's mental model is
+   *statements from named parties*, which matches how they
+   already think about authorization ("the manager said you
+   could…"). The chain model requires teaching append-only
+   chains, ephemeral keys, sealing, and prev-sig linking — all
+   mechanical concerns that don't teach authorization thinking,
+   they just teach Biscuit's specific implementation.
+
+2. **The assertion model is the library's newer, more
+   considered design.** It was added after a full design-doc
+   pass with multi-reviewer feedback (see
+   `../stroopwafel-pdp/docs/assertion-api-proposal.md`),
+   with pinned decisions explaining every tradeoff. The chain
+   model is a direct port of Biscuit's semantics and predates
+   the assertion model.
+
+3. **The assertion model maps cleanly onto stroopwafel's
+   "facts + rules + decide" shape.** Each signed assertion
+   becomes a fact; templates surface clean predicates like
+   `[:can ?subject ?action ?resource]`; policies join across
+   them. There is almost no conceptual distance between "this
+   is how raw stroopwafel works" and "this is how the SPKI PDP
+   works." The chain model adds a whole layer of "blocks have
+   scope, authorizer sees this subset, attenuation narrows
+   that subset" that distracts from the core engine intuition.
+
+4. **Delegation and revocation are cleaner in the assertion
+   model.** Delegation is a `:delegation` assertion from one
+   party to another — same data shape as every other
+   assertion. Revocation is a `:revocation` assertion with
+   three scopes (by id, by key, by subject). In the chain
+   model, delegation is structural (extend the chain) and
+   revocation is either a separate subsystem or a side-channel
+   check. The assertion model makes both "just more facts."
+
+5. **Frank built the SPKI/SDSI path to replace the chain path
+   as the recommended model going forward.** alpaca-clj (the
+   reference consumer) still supports bearer/bound/group
+   (chain-shaped) for backward compatibility, but any new
+   code would reach for `:spki` mode. The tutorial should
+   teach what you'd build today, not what you'd maintain.
+
+**Practical implication for the chapter arc in §5:** the signet +
+PDP chapters use `stroopwafel.pdp.spki.*` exclusively. If you
+want a "contrast chapter" near the end, fine, but it's optional.
+Absolutely do NOT lead with the chain model or treat the two PDPs
+as equivalent options. They are not equivalent for teaching
+purposes.
 
 ---
 
@@ -396,51 +474,109 @@ semantics start to peek through, but you don't need the word
 Now we motivate crypto. "What if the fact came from someone we
 needed to trust?" Introduce `signet.key/signing-keypair`,
 `signet.sign/sign-edn`, `verify-edn`. Show how a signed envelope
-carries a `:signer` kid. Start injecting signed facts into
-stroopwafel manually — extract the signer kid, verify, add as
-a fact, evaluate.
+carries a `:signer` kid URN and how verification reveals who
+signed what. No PDP yet — just signing + verifying raw EDN
+payloads. The reader should come away understanding that a kid
+URN is a self-describing public key identifier.
 
-**Chapter 6 — The PDP pattern (stroopwafel-pdp enters)**
-The manual signer-extraction in Chapter 5 gets tedious. Introduce
-`stroopwafel.pdp.core` as the convenience layer: `context`,
-`add-chain`, `add-signed-envelope`, `add-facts`, `decide`. Show
-how the Biscuit-style chain token works: one root authority,
-blocks extending, sealing at the end, verification. This is the
-first "real token" in the tutorial.
+**Chapter 6 — Your first signed assertion (spki.assertion enters)**
+Introduce `stroopwafel.pdp.spki.assertion/assertion` and
+`sign-block`. An assertion is a map with `:id :type :statement`.
+A block wraps N assertions with shared sayer + temporal metadata
+in one signed envelope. Start with one assertion: `(a/assertion
+:capability ["alice" :read "/data"])`. Sign it with a root
+keypair. Call `verify-block` and look at the result. The reader
+should feel: "ok, this is just a signed list of statements, I
+get it."
 
-**Chapter 7 — SPKI/SDSI assertions (the other model)**
-The second PDP. `stroopwafel.pdp.spki.*`. Shift perspective: "what
-if instead of one chain, we have independent signed statements
-from different parties?" Introduce name-binding and capability
-assertions. Show the SDSI-style name resolution example: "Alice is
-in ops-team, ops-team can restart /api, therefore Alice can
-restart /api." This is the payoff chapter — it's where the reader
-sees that the stroopwafel foundation supports genuinely different
-trust models with very little additional machinery.
+**Chapter 7 — Your first PDP decision (spki.core enters)**
+`stroopwafel.pdp.spki.core` is the glue. Build a minimal
+context: `context` → `add-trust-roots` → `add-assertions` →
+`decide`. Use a raw positional query in the policy (no templates
+yet) to confirm the assertion is visible as a fact. Flip it to
+deny by asking for a different capability. This is the first
+"real" end-to-end authorization: signed input, Datalog decision,
+allow/deny. The reader should feel: "that's not much more than
+Chapter 1, it's just got a signing step on the front."
 
-**Chapter 8 — Trust, delegation, attenuation**
-By now the reader has seen two trust models. Introduce delegation:
-signing a statement that grants someone else the right to issue
-certain kinds of statements. Walk through the trust-closure
-fixpoint. Show attenuation: how narrowing happens automatically.
+**Chapter 8 — Templates and clean predicates**
+The raw positional patterns from Chapter 7 are ugly. Introduce
+`stroopwafel.pdp.spki.templates/standard`. Now policies read
+`[:can "alice" :read "/data"]` instead of seven-slot positional
+matches. Explain what templates are (just Datalog rules that
+unpack the stored fact shape). **Include the `?_` caveat** —
+templates must use unique variable names for ignored positions;
+repeating `?_` silently fails because it's treated as
+unification. This is a real gotcha from the library-writing
+session.
 
-**Chapter 9 — Revocation**
-Three scopes: by id, by key, by subject. Show how revocation
-participates in the same Datalog engine rather than being a
-separate subsystem. The reader realizes everything is facts all
-the way down.
+**Chapter 9 — SDSI name resolution (the payoff chapter)**
+This is where the reader's mental model clicks. Root signs a
+block with TWO assertion types: `:name-binding` (alice is in
+ops-team) and `:capability` (ops-team can restart /api). Policy
+author writes one rule:
+```clojure
+{:head [:authorized ?key ?action ?resource]
+ :body [[:named ?key ?group]
+        [:can ?group ?action ?resource]]}
+```
+Add `[:request-verified-signer alice-kid]` as an injected fact,
+decide, allow. The reader sees that two independent signed
+statements composed via a Datalog join produced the decision.
+This is the SPKI/SDSI contribution: policy is a query over
+signed facts from potentially different issuers. Show a
+non-member case (alice's capability but bob signs the request)
+to drive home that the signer must actually be named.
 
-**Chapter 10 — Pulling it together**
+**Chapter 10 — Delegation and trust closure**
+Introduce `:delegation` assertions. Root delegates to an ops
+team lead; ops team lead issues capabilities. Walk through how
+`stroopwafel.pdp.spki.trust/resolve` computes the fixpoint
+(primordial roots + surviving delegations = effective trust).
+Show attenuation: a narrower delegation can't be widened by
+further delegation. Keep the math light — the point is that
+delegation is "just more assertions" from the reader's
+perspective.
+
+**Chapter 11 — Revocation**
+Three scopes: by assertion id, by sayer key, by subject name.
+Show how revocation assertions participate in the same Datalog
+pipeline as everything else (they're filtered in the pre-filter
+pass, not as an external check). Demonstrate all three scopes
+with a running example. Include the caveat from HANDOFF §7:
+because `:not-after` defaults to infinity, revocation is
+load-bearing for any real deployment.
+
+**Chapter 12 — Pulling it together**
 A small end-to-end example. Maybe a tiny HTTP service (Ring
-handler) where a client presents a signed token and the service
-authorizes via stroopwafel-pdp. Doesn't have to be polished —
-just "here's what it looks like in a real-ish context."
+handler) where a client presents a signed assertion block as
+the Bearer token + signs the request with their own key. The
+service builds an spki context, adds the block and the signer
+fact, decides. Doesn't have to be polished — just "here's what
+it looks like in a real-ish context." Reference alpaca-clj's
+`:spki` auth mode as the production-shaped example.
 
-**Chapter 11 — Where to go next**
-Links to the full libraries, the design docs, the alpaca-clj
-reference implementation (which is a production-shaped
-capability-gated trading proxy). Mention that every concept in
-this tutorial is used in a real paper-trading-backed system.
+**Chapter 13 — Where to go next**
+Links to the full libraries, the design docs
+(assertion-api-proposal.md is a great next read for the
+curious), and the alpaca-clj reference implementation. Mention
+that every concept in this tutorial is used in a real
+paper-trading-backed system.
+
+**Appendix A (optional) — The other model: chain-shaped PDP**
+For readers who're curious or who've encountered Biscuit
+before, this appendix briefly explains that `stroopwafel.pdp.*`
+(without `.spki`) is a parallel PDP implementing Biscuit-style
+append-only chain tokens with attenuation via block extension
+and sealing. Show one minimal example. Explain that it's in the
+library for historical reasons and for use cases that
+specifically want bearer-token semantics (e.g., when the client
+is also the subject and you want cryptographic delegation
+tracking built into the token itself). The tutorial does NOT
+need to teach this appendix — it's a pointer, not a chapter.
+If you're running short on time, skip it entirely. If you
+include it, keep it brief (one page) and put it AFTER
+"Where to go next" so readers know it's optional.
 
 Total: ~10-12 chapters. The tutorial should be the kind of thing a
 curious Clojure developer can work through in a long afternoon and
@@ -536,6 +672,20 @@ Testing conventions across the repos:
   No "here's how the Datalog fixpoint works" or "here's how
   unification is implemented." The tutorial is about *using*
   stroopwafel, not *being* stroopwafel.
+- **Do NOT teach the chain-shaped PDP (`stroopwafel.pdp.*`
+  without `.spki`) in the main chapter flow.** The tutorial
+  teaches the SPKI/SDSI assertion model
+  (`stroopwafel.pdp.spki.*`) end-to-end. The chain model is
+  available as an optional final appendix and nothing more.
+  See §2.1 for the five-point rationale. This is not a
+  preference — it's a firm constraint. Leading with the chain
+  model will confuse every beginner who isn't already fluent
+  in Biscuit.
+- **Do NOT treat the two PDPs as equivalent alternatives.**
+  Don't write "stroopwafel-pdp offers two authorization
+  models; you can pick either." For the tutorial reader's
+  purposes, there is ONE model (SPKI/SDSI assertions) and a
+  footnote about another one that exists.
 - **Do NOT reference this handoff doc in the tutorial.** The
   reader doesn't need to know about the meta-conversation that
   produced it. Delete or move this file once you've absorbed it.

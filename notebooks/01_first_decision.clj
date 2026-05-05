@@ -1,90 +1,117 @@
 ;; # Chapter 1 — Your first authorization decision
 ;;
-;; > **Note to the tutorial author (fresh Claude instance or human):**
-;; > This file is a SCAFFOLD, not a finished chapter. It demonstrates
-;; > the Clay notebook format and confirms the three libraries are
-;; > wired up correctly. The actual prose — the hook, the explanation,
-;; > the "aha" moment — you write. See ../HANDOFF.md §5 and §9 for
-;; > the pedagogical arc. Delete this note before shipping.
-
-;; This tutorial is about a Clojure library called **stroopwafel**.
-;; Despite the name, it's not a food — it's a tiny machine for making
-;; yes/no decisions.
+;; Suppose you're building a small blog. Someone hits
+;; `POST /posts/42/edit` and your service has to decide: **do we let
+;; them through?**
 ;;
-;; Here's the whole idea in one sentence: **you give stroopwafel some
-;; facts, ask it a question, and it gives you a yes/no answer.**
+;; That's an authorization question, and it's exactly the kind of
+;; thing **stroopwafel** exists to answer. Stroopwafel is a tiny
+;; Clojure library that takes some facts you know, a rule or two,
+;; and a question — and gives you back a yes or a no. That's the
+;; whole library. One function does the work: `evaluate`.
 ;;
-;; That's it. Let's see it work.
+;; Let's see it run.
 
 (ns first-decision
   (:require [stroopwafel.core :as sw]))
 
-;; ## The three ingredients
-;;
-;; Every decision stroopwafel makes comes from three things:
-;;
-;; 1. **Facts** — what we know to be true
-;; 2. **Query** — what we want to check
-;; 3. **Policy** — a rule that says "if the query succeeds, allow"
-;;
-;; Let's build the smallest possible example.
-
 ;; ## Facts
 ;;
-;; Facts are Clojure vectors. Each vector is one fact. The first
-;; element is a conventional "predicate" (like a column name), and
-;; the rest are the values. Stroopwafel doesn't care what any of
-;; this *means* — it just stores the vectors and matches patterns
-;; against them.
+;; Facts are Clojure vectors. Stroopwafel matches them by *position*
+;; — it doesn't know or care what any slot "means." So a fact like
+;; `[:has-role "alice" :editor]` would work just fine: the engine
+;; would read slot 1 as the user and slot 2 as the role because
+;; that's where we chose to put them.
+;;
+;; The trouble is that positional tuples get hard to read the
+;; moment there are more than two or three slots, and we're going
+;; to grow them quickly. So in this tutorial we'll adopt a
+;; convention from the very first fact: **put a label keyword in
+;; front of every value**, and use commas to break the vector up
+;; visually.
 
-(def my-facts
-  [[:user "alice"]
-   [:role "alice" "admin"]])
+(def blog-facts
+  [[:has-role, :user "alice", :role :editor]
+   [:has-role, :user "bob",   :role :viewer]])
 
-;; Two facts: "there is a user named alice" and "alice has the role
-;; admin". Nothing magical — they're just data.
+;; Two things to notice about that shape. First, the commas are
+;; whitespace in Clojure — they're purely visual, and they let the
+;; vector read like a little map. Second, the labels (`:user`,
+;; `:role`) are literal keywords the engine ignores: they unify
+;; against themselves, which always succeeds, so they cost us
+;; nothing at match time. They're **readability scaffolding**, not
+;; semantics. Drop them and the engine would still do the same
+;; thing.
+;;
+;; Two facts, then: alice is an editor, bob is a viewer.
+
+;; ## A rule
+;;
+;; Facts on their own only tell us what we typed in. A **rule**
+;; lets us *derive* new facts from existing ones. Here's one that
+;; says "editors can edit posts":
+
+(def blog-rules
+  '[{:head [:can-edit, :user ?user]
+     :body [[:has-role, :user ?user, :role :editor]]}])
+
+;; Read it like English: *"there's a fact `[:can-edit :user ?user]`
+;; whenever there's a fact `[:has-role :user ?user :role :editor]`."*
+;; The `?user` is a variable — stroopwafel fills it in from whatever
+;; facts match the body. The labels in the rule body line up with
+;; the labels in the fact, so you can see at a glance which piece
+;; of the fact the `?user` variable is capturing.
 
 ;; ## A decision
 ;;
-;; Now we ask stroopwafel: "is alice an admin?"
+;; Now we ask the engine a question: **can alice edit?**
 
 (sw/evaluate
- ;; The token — our collection of fact blocks
- {:blocks [{:facts my-facts}]}
- ;; The authorizer — our policies
+ {:blocks [{:facts blog-facts
+            :rules blog-rules}]}
  :authorizer
  {:policies [{:kind  :allow
-              :query [[:role "alice" "admin"]]}]})
+              :query [[:can-edit, :user "alice"]]}]})
 
-;; → `{:valid? true}`
+;; The rule fires: alice has role `:editor`, so the derived fact
+;; `[:can-edit :user "alice"]` exists. The policy's query matches
+;; that fact. Decision: **allowed**.
 ;;
-;; The policy says "allow if `[:role "alice" "admin"]` is in the
-;; facts." It is. Decision: allowed.
-;;
-;; Change the policy to ask a different question and the decision
-;; flips:
+;; Change the name and the decision flips:
 
 (sw/evaluate
- {:blocks [{:facts my-facts}]}
+ {:blocks [{:facts blog-facts
+            :rules blog-rules}]}
  :authorizer
  {:policies [{:kind  :allow
-              :query [[:role "alice" "cto"]]}]})
+              :query [[:can-edit, :user "bob"]]}]})
 
-;; → `{:valid? false}`
-;;
-;; No fact matches `[:role "alice" "cto"]`, so the policy doesn't
-;; trigger, and the default is deny.
+;; Bob's role is `:viewer`, not `:editor`, so the rule body doesn't
+;; match for him, no `[:can-edit :user "bob"]` fact is ever
+;; derived, no policy fires, and the default is **deny**.
 
-;; ## What's next
+;; ## What to notice
 ;;
-;; Chapter 1 showed one fact, one policy, one decision. Real
-;; authorization needs more — **variables**, **rules that derive new
-;; facts from existing ones**, **checks that must pass**, and
-;; eventually **signed facts from identified parties**. All of that
-;; is the next few chapters.
+;; The engine doesn't know what `:has-role`, `:can-edit`, or
+;; `editor` mean. It just matches patterns against vectors. That
+;; ignorance is the whole point: the same machine works for file
+;; permissions, workflow gating, feature flags, agent authorization
+;; — anything you can phrase as *facts, rules, and a question*.
 ;;
-;; The thing to notice here: stroopwafel doesn't know what `:role`
-;; means. It just pattern-matches. That ignorance is the whole
-;; point — it means the same engine works for authentication,
-;; authorization, workflow gating, access control, policy checks,
-;; and anything else you can shape like facts-and-queries.
+;; You just ran a real authorization decision in about a dozen
+;; lines of Clojure. The next chapter pauses on an uncomfortable
+;; question — *who told us alice is an editor, and why did we
+;; believe them?* — before we resume typing code.
+
+^{:kind/hiccup true :kindly/hide-code true}
+[:div {:style "margin-top:2em;padding-top:1em;border-top:1px solid #ddd;text-align:right;"}
+ [:a {:href "who_said_so.html"
+      :style (str "display:inline-block;"
+                  "padding:0.6em 1.2em;"
+                  "background:#0366d6;"
+                  "color:white;"
+                  "text-decoration:none;"
+                  "border-radius:4px;"
+                  "font-family:sans-serif;"
+                  "font-weight:500;")}
+  "Next: Chapter 2 — But who said so? →"]]

@@ -1,22 +1,16 @@
 {:paths ["src" "notebooks"]
 
- :deps {org.clojure/clojure {:mvn/version "1.12.4"}
+ :deps {org.clojure/clojure {:mvn/version "1.12.7"}
 
         ;; ── The three-library auth stack ──────────────────────
         ;;
-        ;; Currently installed to ~/.m2 locally via the "Path D"
-        ;; workflow (see each repo's build.clj and HANDOFF.md §4).
-        ;; Not yet on Clojars.
-        ;;
-        ;; When publishing to Clojars later, nothing here needs to
-        ;; change — the :mvn/version coordinates are the same shape
-        ;; regardless of whether the jars live in ~/.m2 or Clojars.
-        com.github.franks42/stroopwafel     {:mvn/version "0.11.0"}
-        com.github.franks42/signet          {:mvn/version "0.3.1"}
-        com.github.franks42/stroopwafel-pdp {:mvn/version "0.2.0"}
+        ;; All three are on Clojars (since 2026-11-24).
+        com.github.franks42/stroopwafel     {:mvn/version "0.16.1"}
+        com.github.franks42/signet          {:mvn/version "0.10.0"}
+        com.github.franks42/stroopwafel-pdp {:mvn/version "0.3.0"}
 
         ;; ── Notebook renderer ────────────────────────────────
-        org.scicloj/clay {:mvn/version "2.0.15"}}
+        org.scicloj/clay {:mvn/version "2.0.24"}}
 
  :aliases
  {;; Test alias for any helper code that needs tests

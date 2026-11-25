@@ -7,9 +7,9 @@
  ;; parsing) pull in JVM-only classes that SCI can't resolve. So
  ;; `bb render` and friends shell out to `clojure` for the JVM
  ;; side; see deps.edn for Clay's version.
- :deps {com.github.franks42/stroopwafel     {:mvn/version "0.11.0"}
-        com.github.franks42/signet          {:mvn/version "0.3.1"}
-        com.github.franks42/stroopwafel-pdp {:mvn/version "0.2.0"}}
+ :deps {com.github.franks42/stroopwafel     {:mvn/version "0.16.1"}
+        com.github.franks42/signet          {:mvn/version "0.10.0"}
+        com.github.franks42/stroopwafel-pdp {:mvn/version "0.3.0"}}
 
  :tasks
  {;; ── Quality ─────────────────────────────────────────────

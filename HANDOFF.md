@@ -271,15 +271,13 @@ stroopwafel-tutorial/
 
 ```clojure
 {:paths ["src" "notebooks"]
- :deps  {org.clojure/clojure                  {:mvn/version "1.12.4"}
-         ;; Three-library auth stack — installed to ~/.m2 via the
-         ;; Path D workflow; :mvn/version coords work today and
-         ;; will work transparently when these are on Clojars.
-         com.github.franks42/stroopwafel      {:mvn/version "0.11.0"}
-         com.github.franks42/signet           {:mvn/version "0.3.1"}
-         com.github.franks42/stroopwafel-pdp  {:mvn/version "0.2.0"}
+ :deps  {org.clojure/clojure                  {:mvn/version "1.12.7"}
+         ;; Three-library auth stack — on Clojars since 2026-11-24
+         com.github.franks42/stroopwafel      {:mvn/version "0.16.1"}
+         com.github.franks42/signet           {:mvn/version "0.10.0"}
+         com.github.franks42/stroopwafel-pdp  {:mvn/version "0.3.0"}
          ;; Notebook renderer (JVM-only, see §3)
-         org.scicloj/clay                     {:mvn/version "2.0.15"}}
+         org.scicloj/clay                     {:mvn/version "2.0.24"}}
 
  :aliases
  {:test {:extra-paths ["test"]
@@ -299,9 +297,9 @@ stroopwafel-tutorial/
 
 ```clojure
 {:paths ["src" "notebooks"]
- :deps  {com.github.franks42/stroopwafel     {:mvn/version "0.11.0"}
-         com.github.franks42/signet          {:mvn/version "0.3.1"}
-         com.github.franks42/stroopwafel-pdp {:mvn/version "0.2.0"}}
+ :deps  {com.github.franks42/stroopwafel     {:mvn/version "0.16.1"}
+         com.github.franks42/signet          {:mvn/version "0.10.0"}
+         com.github.franks42/stroopwafel-pdp {:mvn/version "0.3.0"}}
  ;; Note: Clay is NOT in bb's :deps — it doesn't load under bb
  ;; (see §3). bb tasks that touch Clay shell out to `clojure -M`.
 
@@ -350,6 +348,14 @@ works. If publication to Clojars is still pending when readers
 arrive, the README can add a one-paragraph "for now you need to
 install these locally" workaround pointing at each library's
 `build.clj`, but the design assumes a clean Clojars experience.
+
+_Update 2026-11-24:_ all three are on Clojars (stroopwafel 0.16.1,
+signet 0.10.0, stroopwafel-pdp 0.3.0), so no workaround is needed.
+Behaviour changes since 0.11.0 that a chapter may run into: a call
+without `:policies` denies (add `{:kind :allow :query []}` to let
+checks decide); a predicate used with two lengths denies
+(`:reason :arity-mismatch`); unknown option keys throw; pdp's
+constrained capability template derives `:can-constrained`.
 
 ---
 
